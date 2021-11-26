@@ -132,9 +132,7 @@ def get_uncertainty(models, unlabeled_loader, criterions):
 
 
 def get_cluster_result(model, data_loader):
-    models['backbone'].eval()
-    models['module'].eval()
-    models['ae'].eval()
+    model.eval()
 
     features = torch.tensor([]).cuda()
     with torch.no_grad():
