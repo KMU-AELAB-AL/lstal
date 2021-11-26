@@ -139,9 +139,9 @@ def get_cluster_result(model, data_loader):
         for (inputs, labels) in data_loader:
             inputs = inputs.cuda()
 
-            ae_feature = model(inputs)
+            ae_out = model(inputs)
 
-            features = torch.cat((features, ae_feature), 0)
+            features = torch.cat((features, ae_out[1]), 0)
     features = features.cpu().numpy()
 
     return AgglomerativeClustering(n_clusters=CLS_CNT).fit_predict(features)
