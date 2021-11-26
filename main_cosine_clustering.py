@@ -124,7 +124,7 @@ def get_uncertainty(models, unlabeled_loader, criterions):
 
             ae_out = models['ae'](inputs)
 
-            loss = torch.mean(1 - criterions['module'](pred_feature, ae_out[1].detach()))
+            loss = 1 - criterions['module'](pred_feature, ae_out[1].detach())
 
             uncertainty = torch.cat((uncertainty, loss), 0)
 
