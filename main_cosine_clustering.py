@@ -43,57 +43,38 @@ elif DATASET == 'cifar100':
     data_test = CIFAR100('./data', train=False, download=True, transform=transforms.test_transform)
 
 
-def train_module(models, optimizers, criterions, dataloaders):
-    models['ae'].eval()
-    models['backbone'].eval()
-    models['module'].train()
-
-    _loss, cnt = 0., 0
-    for data in tqdm(dataloaders['module'], leave=False, total=len(dataloaders['module'])):
-        cnt += 1
-
-        inputs = data[0].cuda()
-
-        optimizers['module'].zero_grad()
-
-        _, features = models['backbone'](inputs)
-
-        features[0] = features[0].detach()
-        features[1] = features[1].detach()
-        features[2] = features[2].detach()
-        features[3] = features[3].detach()
-
-        pred_feature = models['module'](features)
-        pred_feature = pred_feature.view([-1, EMBEDDING_DIM])
-        ae_out = models['ae'](inputs)
-
-        loss = torch.mean(1 - criterions['module'](pred_feature, ae_out[1].detach()))
-
-        loss.backward()
-        optimizers['module'].step()
-
-        _loss += loss
-
-    return _loss / cnt
-
-
-def train_epoch(models, criterions, optimizers, dataloaders):
+def train_epoch(models, criterions, optimizers, dataloaders, epoch):
     models['backbone'].train()
-    models['module'].eval()
+    models['module'].train()
     models['ae'].eval()
 
-    _weight = WEIGHT
     for data in tqdm(dataloaders['train'], leave=False, total=len(dataloaders['train'])):
         inputs = data[0].cuda()
         labels = data[1].cuda()
 
         optimizers['backbone'].zero_grad()
+        optimizers['module'].zero_grad()
 
         scores, features = models['backbone'](inputs)
-        loss = criterions['backbone'](scores, labels)
+        target_loss = criterions['backbone'](scores, labels)
+
+        if epoch > 120:
+            features[0] = features[0].detach()
+            features[1] = features[1].detach()
+            features[2] = features[2].detach()
+            features[3] = features[3].detach()
+
+        pred_feature = models['module'](features)
+        pred_feature = pred_feature.view([-1, EMBEDDING_DIM])
+        ae_out = models['ae'](inputs)
+
+        transfer_loss = torch.mean(1 - criterions['module'](pred_feature, ae_out[1].detach()))
+
+        loss = target_loss + transfer_loss
 
         loss.backward()
         optimizers['backbone'].step()
+        optimizers['module'].step()
 
 
 def test(models, dataloaders, mode='val'):
@@ -120,18 +101,14 @@ def train(models, criterions, optimizers, schedulers, dataloaders, num_epochs):
 
     for epoch in range(num_epochs):
         schedulers['backbone'].step()
-        train_epoch(models, criterions, optimizers, dataloaders)
-
-    for epoch in range(num_epochs * 2):
-        loss = train_module(models, optimizers, criterions, dataloaders)
-        if loss < 0.3:
-            return
-        schedulers['module'].step(loss)
+        train_epoch(models, criterions, optimizers, dataloaders, epoch)
+        if epoch % 10 is 0:
+            print(test(models, dataloaders, mode='train'), test(models, dataloaders, mode='test'))
 
     print('>> Finished.')
 
 
-def get_uncertainty(models, unlabeled_loader):
+def get_uncertainty(models, unlabeled_loader, criterions):
     models['backbone'].eval()
     models['module'].eval()
     models['ae'].eval()
@@ -147,7 +124,7 @@ def get_uncertainty(models, unlabeled_loader):
 
             ae_out = models['ae'](inputs)
 
-            loss = torch.mean((pred_feature - ae_out[1].detach()) ** 2, dim=1)
+            loss = torch.mean(1 - criterions['module'](pred_feature, ae_out[1].detach()))
 
             uncertainty = torch.cat((uncertainty, loss), 0)
 
@@ -199,12 +176,12 @@ if __name__ == '__main__':
     target_module.cuda()
 
     for trial in range(TRIALS):
+        fp = open(f'record_{trial + 1}.txt', 'w')
+
         indices = list(range(NUM_TRAIN))
         clustered_label = get_cluster_result(target_module, DataLoader(data_unlabeled, batch_size=BATCH,
                                                                        sampler=SubsetSequentialSampler(indices),
                                                                        pin_memory=True))
-
-        fp = open(f'record_{trial + 1}.txt', 'w')
 
         random.shuffle(indices)
         labeled_set = indices[:INIT_CNT]
@@ -214,10 +191,7 @@ if __name__ == '__main__':
                                   sampler=SubsetRandomSampler(labeled_set),
                                   pin_memory=True)
         test_loader = DataLoader(data_test, batch_size=BATCH)
-        module_train_loader = DataLoader(data_module, batch_size=BATCH,
-                                         sampler=SubsetRandomSampler(labeled_set),
-                                         pin_memory=True)
-        dataloaders = {'train': train_loader, 'test': test_loader, 'module': module_train_loader}
+        dataloaders = {'train': train_loader, 'test': test_loader}
 
         resnet18 = ResNet18(num_classes=CLS_CNT).cuda()
         feature_module = FeatureNet(out_dim=EMBEDDING_DIM).cuda()
@@ -252,7 +226,7 @@ if __name__ == '__main__':
                                           sampler=SubsetSequentialSampler(unlabeled_set),
                                           pin_memory=True)
 
-            uncertainty = get_uncertainty(models, unlabeled_loader)
+            uncertainty = get_uncertainty(models, unlabeled_loader, criterions)
 
             arg = np.argsort(uncertainty)
 
