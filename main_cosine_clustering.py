@@ -152,7 +152,7 @@ def sampling(cluster_dict):
     while len(sampled) < ADDENDUM:
         order = sorted(list(cluster_dict.keys()), key=lambda x: cluster_dict[x])
         quo, remain = (ADDENDUM - len(sampled)) // len(order), (ADDENDUM - len(sampled)) % len(order)
-        quo = quo if quo < min(cluster_dict.values()) else min(cluster_dict.values())
+        quo = quo if quo < min([len(i) for i in cluster_dict.values()]) else min([len(i) for i in cluster_dict.values()])
 
         if quo:
             for idx in order:
