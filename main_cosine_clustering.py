@@ -165,6 +165,7 @@ def sampling(cluster_dict):
         else:
             for idx in order[:remain]:
                 sampled.append(cluster_dict[idx].pop)
+    return sampled
 
 
 if __name__ == '__main__':
