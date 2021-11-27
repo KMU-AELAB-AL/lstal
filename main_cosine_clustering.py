@@ -164,7 +164,7 @@ def sampling(cluster_dict):
                     del cluster_dict[idx]
         else:
             for idx in order[:remain]:
-                sampled.append(cluster_dict[idx].pop)
+                sampled.append(cluster_dict[idx].pop())
     return sampled
 
 
