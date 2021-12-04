@@ -65,8 +65,7 @@ def train_supplement(models, criterions, optimizers, dataloaders):
 
         ae_out = models['ae'](inputs)
 
-        transfer_loss = criterions['module'](pred_feature, ae_out[1].detach())
-        loss = torch.sum(transfer_loss) / transfer_loss.size(0)
+        loss = criterions['module'](pred_feature, ae_out[1].detach())
 
         loss.backward()
         optimizers['supplement'].step()
@@ -105,7 +104,7 @@ def train_epoch(models, criterions, optimizers, dataloaders, epoch):
 
         transfer_loss = criterions['module'](pred_feature, ae_out[1].detach())
 
-        loss = target_loss + _weight * (torch.sum(transfer_loss) / transfer_loss.size(0))
+        loss = target_loss + (_weight * transfer_loss)
 
         loss.backward()
         optimizers['backbone'].step()
@@ -147,7 +146,7 @@ def train(models, criterions, optimizers, schedulers, dataloaders, num_epochs):
     print('>> Finished.')
 
 
-def get_uncertainty(models, unlabeled_loader, criterions):
+def get_uncertainty(models, unlabeled_loader):
     models['backbone'].eval()
     models['module'].eval()
     models['ae'].eval()
@@ -163,7 +162,7 @@ def get_uncertainty(models, unlabeled_loader, criterions):
 
             ae_out = models['ae'](inputs)
 
-            loss = criterions['module'](pred_feature, ae_out[1].detach())
+            loss = torch.sum((pred_feature - ae_out[1].detach()) ** 2, dim=1)
 
             uncertainty = torch.cat((uncertainty, loss), 0)
 
@@ -243,7 +242,7 @@ if __name__ == '__main__':
 
         for cycle in range(CYCLES):
             criterion = nn.CrossEntropyLoss().cuda()
-            criterion_module = nn.MSELoss(reduction='none').cuda()
+            criterion_module = nn.MSELoss().cuda()
             criterions = {'backbone': criterion, 'module': criterion_module}
 
             optim_backbone = optim.SGD(models['backbone'].parameters(), lr=LR,
@@ -269,7 +268,7 @@ if __name__ == '__main__':
                                           sampler=SubsetSequentialSampler(unlabeled_set),
                                           pin_memory=True)
 
-            uncertainty = get_uncertainty(models, unlabeled_loader, criterions)
+            uncertainty = get_uncertainty(models, unlabeled_loader)
 
             arg = np.argsort(uncertainty)
 
