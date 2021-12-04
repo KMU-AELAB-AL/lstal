@@ -41,7 +41,7 @@ elif DATASET == 'cifar100':
     data_test = CIFAR100('./data', train=False, download=True, transform=transforms.test_transform)
 
 
-def train_supplement(models, criterions, optimizers, dataloaders, epoch):
+def train_supplement(models, criterions, optimizers, dataloaders):
     models['module'].train()
     models['backbone'].eval()
     models['ae'].eval()
@@ -141,7 +141,7 @@ def train(models, criterions, optimizers, schedulers, dataloaders, num_epochs):
             print(test(models, dataloaders, mode='train'), test(models, dataloaders, mode='test'))
 
     for epoch in range(num_epochs):
-        loss = train_supplement(models, criterions, optimizers, dataloaders, epoch)
+        loss = train_supplement(models, criterions, optimizers, dataloaders)
         schedulers['supplement'].step(loss)
 
     print('>> Finished.')
@@ -229,10 +229,10 @@ if __name__ == '__main__':
                                   sampler=SubsetRandomSampler(labeled_set),
                                   pin_memory=True)
         test_loader = DataLoader(data_test, batch_size=BATCH)
-        train_supplement = DataLoader(data_unlabeled, batch_size=BATCH,
+        supplement_loader = DataLoader(data_unlabeled, batch_size=BATCH,
                                       sampler=SubsetRandomSampler(labeled_set),
                                       pin_memory=True)
-        dataloaders = {'train': train_loader, 'test': test_loader, 'supplement': train_supplement}
+        dataloaders = {'train': train_loader, 'test': test_loader, 'supplement': supplement_loader}
 
         resnet18 = ResNet18(num_classes=CLS_CNT).cuda()
         feature_module = FeatureNet(out_dim=EMBEDDING_DIM).cuda()
