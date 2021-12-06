@@ -43,6 +43,40 @@ elif DATASET == 'cifar100':
     data_test = CIFAR100('./data', train=False, download=True, transform=transforms.test_transform)
 
 
+def train_supplement(models, criterions, optimizers, dataloaders):
+    models['module'].train()
+    models['backbone'].eval()
+    models['ae'].eval()
+
+    _loss, cnt = 0., 0
+    for data in tqdm(dataloaders['supplement'], leave=False, total=len(dataloaders['supplement'])):
+        cnt += 1
+        inputs = data[0].cuda()
+
+        optimizers['supplement'].zero_grad()
+
+        scores, features = models['backbone'](inputs)
+
+        features[0] = features[0].detach()
+        features[1] = features[1].detach()
+        features[2] = features[2].detach()
+        features[3] = features[3].detach()
+
+        pred_feature = models['module'](features)
+        pred_feature = pred_feature.view([-1, EMBEDDING_DIM])
+
+        ae_out = models['ae'](inputs)
+
+        loss = criterions['module'](pred_feature, ae_out[1].detach())
+
+        loss.backward()
+        optimizers['supplement'].step()
+
+        _loss += loss
+
+    return _loss / cnt
+
+
 def train_epoch(models, criterions, optimizers, dataloaders, epoch):
     models['backbone'].train()
     models['module'].train()
@@ -104,6 +138,12 @@ def train(models, criterions, optimizers, schedulers, dataloaders, num_epochs):
         train_epoch(models, criterions, optimizers, dataloaders, epoch)
         if epoch % 10 is 0:
             print(test(models, dataloaders, mode='train'), test(models, dataloaders, mode='test'))
+
+    for epoch in range(num_epochs):
+        loss = train_supplement(models, criterions, optimizers, dataloaders)
+        schedulers['supplement'].step(loss)
+        if epoch % 10 is 0:
+            print(loss)
 
     print('>> Finished.')
 
@@ -190,7 +230,10 @@ if __name__ == '__main__':
                                   sampler=SubsetRandomSampler(labeled_set),
                                   pin_memory=True)
         test_loader = DataLoader(data_test, batch_size=BATCH)
-        dataloaders = {'train': train_loader, 'test': test_loader}
+        supplement_loader = DataLoader(data_unlabeled, batch_size=BATCH,
+                                       sampler=SubsetRandomSampler(labeled_set),
+                                       pin_memory=True)
+        dataloaders = {'train': train_loader, 'test': test_loader, 'supplement': supplement_loader}
 
         resnet18 = ResNet18(num_classes=CLS_CNT).cuda()
         feature_module = FeatureNet(out_dim=EMBEDDING_DIM).cuda()
@@ -204,15 +247,15 @@ if __name__ == '__main__':
             m_criterion = nn.CosineSimilarity(dim=1, eps=1e-6).cuda()
             criterions = {'backbone': criterion, 'module': m_criterion}
 
-            optim_backbone = optim.SGD(models['backbone'].parameters(), lr=LR,
-                                       momentum=MOMENTUM, weight_decay=WDECAY)
-            optim_module = optim.Adam(models['module'].parameters(), lr=1e-3)
+            optim_backbone = optim.SGD(models['backbone'].parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WDECAY)
+            optim_module = optim.SGD(models['backbone'].parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WDECAY)
+            optim_supplement = optim.Adam(models['module'].parameters(), lr=1e-3)
+            optimizers = {'backbone': optim_backbone, 'module': optim_module, 'supplement': optim_supplement}
 
             sched_backbone = lr_scheduler.MultiStepLR(optim_backbone, milestones=MILESTONES)
-            sched_module = lr_scheduler.ReduceLROnPlateau(optim_module, mode='min', factor=0.8, cooldown=4)
-
-            optimizers = {'backbone': optim_backbone, 'module': optim_module}
-            schedulers = {'backbone': sched_backbone, 'module': sched_module}
+            sched_module = lr_scheduler.MultiStepLR(optim_backbone, milestones=MILESTONES)
+            sched_supplement = lr_scheduler.ReduceLROnPlateau(optim_module, mode='min', factor=0.8, cooldown=4)
+            schedulers = {'backbone': sched_backbone, 'module': sched_module, 'supplement': sched_supplement}
 
             train(models, criterions, optimizers, schedulers, dataloaders, EPOCH)
             acc = test(models, dataloaders, mode='test')
@@ -244,3 +287,6 @@ if __name__ == '__main__':
             dataloaders['train'] = DataLoader(data_train, batch_size=BATCH,
                                               sampler=SubsetRandomSampler(labeled_set),
                                               pin_memory=True)
+            dataloaders['supplement'] = DataLoader(data_unlabeled, batch_size=BATCH,
+                                                   sampler=SubsetRandomSampler(labeled_set),
+                                                   pin_memory=True)
