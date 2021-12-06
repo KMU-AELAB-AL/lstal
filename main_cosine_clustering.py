@@ -67,7 +67,7 @@ def train_supplement(models, criterions, optimizers, dataloaders):
 
         ae_out = models['ae'](inputs)
 
-        loss = criterions['module'](pred_feature, ae_out[1].detach())
+        loss = torch.mean(1 - criterions['module'](pred_feature, ae_out[1].detach()))
 
         loss.backward()
         optimizers['supplement'].step()
