@@ -135,6 +135,7 @@ def train(models, criterions, optimizers, schedulers, dataloaders, num_epochs):
 
     for epoch in range(num_epochs):
         schedulers['backbone'].step()
+        schedulers['module'].step()
         train_epoch(models, criterions, optimizers, dataloaders, epoch)
         if epoch % 10 is 0:
             print(test(models, dataloaders, mode='train'), test(models, dataloaders, mode='test'))
