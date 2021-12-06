@@ -249,7 +249,7 @@ if __name__ == '__main__':
             criterions = {'backbone': criterion, 'module': m_criterion}
 
             optim_backbone = optim.SGD(models['backbone'].parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WDECAY)
-            optim_module = optim.SGD(models['backbone'].parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WDECAY)
+            optim_module = optim.SGD(models['module'].parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WDECAY)
             optim_supplement = optim.Adam(models['module'].parameters(), lr=1e-3)
             optimizers = {'backbone': optim_backbone, 'module': optim_module, 'supplement': optim_supplement}
 
