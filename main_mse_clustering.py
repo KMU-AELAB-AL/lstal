@@ -135,6 +135,7 @@ def train(models, criterions, optimizers, schedulers, dataloaders, num_epochs):
 
     for epoch in range(num_epochs):
         schedulers['backbone'].step()
+        schedulers['module'].step()
         train_epoch(models, criterions, optimizers, dataloaders, epoch)
         if epoch % 10 is 0:
             print(test(models, dataloaders, mode='train'), test(models, dataloaders, mode='test'))
@@ -245,14 +246,13 @@ if __name__ == '__main__':
             criterion_module = nn.MSELoss().cuda()
             criterions = {'backbone': criterion, 'module': criterion_module}
 
-            optim_backbone = optim.SGD(models['backbone'].parameters(), lr=LR,
-                                       momentum=MOMENTUM, weight_decay=WDECAY)
-            optim_module = optim.Adam(models['module'].parameters(), lr=1e-3)
+            optim_backbone = optim.SGD(models['backbone'].parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WDECAY)
+            optim_module = optim.SGD(models['module'].parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WDECAY)
             optim_supplement = optim.Adam(models['module'].parameters(), lr=1e-3)
 
             sched_backbone = lr_scheduler.MultiStepLR(optim_backbone, milestones=MILESTONES)
-            sched_module = lr_scheduler.MultiStepLR(optim_backbone, milestones=MILESTONES)
-            sched_supplement = lr_scheduler.ReduceLROnPlateau(optim_module, mode='min', factor=0.8, cooldown=4)
+            sched_module = lr_scheduler.MultiStepLR(optim_module, milestones=MILESTONES)
+            sched_supplement = lr_scheduler.ReduceLROnPlateau(optim_supplement, mode='min', factor=0.8, cooldown=4)
 
             optimizers = {'backbone': optim_backbone, 'module': optim_module, 'supplement': optim_supplement}
             schedulers = {'backbone': sched_backbone, 'module': sched_module, 'supplement': sched_supplement}
